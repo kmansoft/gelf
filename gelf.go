@@ -3,19 +3,36 @@ package gelf
 import (
 	"fmt"
 	"net"
+	"errors"
 )
 
 type Config struct {
+	Enabled bool `json:"enabled"`
 	Net string `json:"net"`
 	Addr string `json:"addr"`
+	Workers int `json:"workers"`
 }
 
 var gSendChannel chan []byte
 
 func Start(config Config) error {
-	if len(config.Addr) == 0 {
-		fmt.Printf("No address for GELF logging, disabled\n")
+	if !config.Enabled {
+		fmt.Printf("GELF logging is disabled\n")
 		return nil
+	}
+
+	if len(config.Net) == 0 {
+		return errors.New("Missing network family")
+	}
+
+	if len(config.Addr) == 0 {
+		return errors.New("Missing address")
+	}
+
+	if config.Workers == 0 {
+		config.Workers = 4
+	} else if config.Workers < 1 || config.Workers > 16 {
+		return fmt.Errorf("Bad worker count %d", config.Workers)	
 	}
 
 	raddr, err := net.ResolveUDPAddr(config.Net, config.Addr)
@@ -29,7 +46,10 @@ func Start(config Config) error {
 	}
 
 	gSendChannel = make(chan []byte, 16)
-	go worker(gSendChannel, conn)
+
+	for i := 0; i < config.Workers; i++ {
+		go worker(gSendChannel, conn)
+	}
 
 	fmt.Printf("GELF logger start, net = %s, addr = %s\n", config.Net, config.Addr)
 
@@ -44,9 +64,14 @@ func Send(packet []byte) {
 	}
 }
 
+func SendString(packet string) {
+	Send([]byte(packet))
+}
+
 func worker(c chan []byte, conn *net.UDPConn) {
 	for {
 		packet := <- c
 		conn.Write(packet)
+		fmt.Printf("%s\n", string(packet))
 	}
 }
