@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
+	"time"
 )
 
 /* ----- */
@@ -19,13 +21,14 @@ const (
 /* ----- */
 
 type Config struct {
-	Enabled  bool   `json:"enabled"`
-	Net      string `json:"net"`
-	Addr     string `json:"addr"`
-	Workers  int    `json:"workers"`
-	Echo     bool   `json:"echo"`
-	Host     string `json:"host"`
-	Compress bool   `json:"compress"`
+	Enabled     bool   `json:"enabled"`
+	Net         string `json:"net"`
+	Addr        string `json:"addr"`
+	Workers     int    `json:"workers"`
+	Echo        bool   `json:"echo"`
+	Host        string `json:"host"`
+	Compress    bool   `json:"compress"`
+	MaxChunkLen int    `json:"max_chunk_len"`
 }
 
 /* ----- */
@@ -82,6 +85,12 @@ func Start(config Config) (err error) {
 		config.Workers = 4
 	} else if config.Workers < 1 || config.Workers > 16 {
 		return fmt.Errorf("Bad worker count %d", config.Workers)
+	}
+
+	if config.MaxChunkLen == 0 {
+		config.MaxChunkLen = 1400
+	} else if config.MaxChunkLen < 100 || config.MaxChunkLen > 8192 {
+		return fmt.Errorf("Bad max chunk size %d", config.MaxChunkLen)
 	}
 
 	raddr, err := net.ResolveUDPAddr(config.Net, config.Addr)
@@ -147,17 +156,19 @@ type worker struct {
 	conn   *net.UDPConn
 	config Config
 
-	zbuf  bytes.Buffer
-	zcomp *zlib.Writer
+	zbuf    bytes.Buffer
+	zwriter *zlib.Writer
+
+	rand *rand.Rand
+	id   []byte
+	cbuf bytes.Buffer
 }
 
 func newWorker(c chan []byte, conn *net.UDPConn, config Config) (*worker, error) {
-	// var err error
 	w := &worker{c: gSendChannel, conn: conn, config: config}
-	w.zcomp = zlib.NewWriter(&w.zbuf)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	w.zwriter = zlib.NewWriter(&w.zbuf)
+	w.rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+	w.id = make([]byte, 8, 8)
 	return w, nil
 }
 
@@ -181,15 +192,50 @@ func (w *worker) run() {
 			tosend = packet
 		}
 
+		total := len(tosend)
+		max := w.config.MaxChunkLen
+
+		if total > max {
+			chunkCount := (total + max - 1) / max
+
+			if chunkCount > 128 {
+				reportError(errors.New("chunk has too many chunks"))
+				continue
+			}
+
+			chunkOffset := 0
+			for chunk := 0; chunk < chunkCount; chunk++ {
+				w.cbuf.Reset()
+				// magic header
+				w.cbuf.WriteByte(0x1e)
+				w.cbuf.WriteByte(0x0f)
+				// id
+				w.rand.Read(w.id)
+				w.cbuf.Write(w.id)
+				// chunk number and count
+				w.cbuf.WriteByte(byte(chunk))
+				w.cbuf.WriteByte(byte(chunkCount))
+				// actual data
+				chunkLen := total - chunkOffset
+				if chunkLen > max {
+					chunkLen = max
+				}
+				sl := tosend[chunkOffset : chunkOffset+chunkLen]
+				w.cbuf.Write(sl)
+				// next!
+				chunkOffset = chunkOffset + max
+			}
+		}
+
 		w.conn.Write(tosend)
 	}
 }
 
 func (w *worker) compress(src []byte) ([]byte, error) {
 	w.zbuf.Reset()
-	w.zcomp.Reset(&w.zbuf)
+	w.zwriter.Reset(&w.zbuf)
 
-	n, err := w.zcomp.Write(src)
+	n, err := w.zwriter.Write(src)
 	if n != len(src) {
 		return nil, fmt.Errorf("Could only write %d of %d bytes", n, len(src))
 	}
@@ -197,7 +243,7 @@ func (w *worker) compress(src []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	w.zcomp.Close()
+	w.zwriter.Close()
 	return w.zbuf.Bytes(), nil
 }
 
