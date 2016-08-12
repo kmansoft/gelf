@@ -31,6 +31,8 @@ func Start(config Config) error {
 	gSendChannel = make(chan []byte, 16)
 	go worker(gSendChannel, conn)
 
+	fmt.Printf("GELF logger start, net = %s, addr = %s\n", config.Net, config.Addr)
+
 	return nil
 }
 
