@@ -56,7 +56,7 @@ func Start(config Config) error {
 	return nil
 }
 
-func Send(packet []byte) {
+func SendBytes(packet []byte) {
 	if gSendChannel != nil {
 		select {
 			case gSendChannel <- packet:
@@ -65,13 +65,12 @@ func Send(packet []byte) {
 }
 
 func SendString(packet string) {
-	Send([]byte(packet))
+	SendBytes([]byte(packet))
 }
 
 func worker(c chan []byte, conn *net.UDPConn) {
 	for {
 		packet := <- c
 		conn.Write(packet)
-		fmt.Printf("%s\n", string(packet))
 	}
 }
