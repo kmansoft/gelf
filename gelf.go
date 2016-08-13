@@ -3,7 +3,6 @@ package gelf
 import (
 	"bytes"
 	"compress/zlib"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -56,10 +55,6 @@ func (e *BaseEvent) InitWithFacility(facility string, shortMessage string) {
 	e.Host = gHost
 	e.Facility = facility
 	e.ShortMessage = shortMessage
-}
-
-func (e *BaseEvent) ToJson() ([]byte, error) {
-	return json.Marshal(e)
 }
 
 /* ----- */
