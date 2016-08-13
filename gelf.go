@@ -40,6 +40,7 @@ type Event interface {
 type BaseEvent struct {
 	Version      string `json:"version"`
 	Host         string `json:"host"`
+	Facility     string `json:"facility",omitempty`
 	ShortMessage string `json:"short_message"`
 	FullMessage  string `json:"full_message,omitempty"`
 }
@@ -47,6 +48,13 @@ type BaseEvent struct {
 func (e *BaseEvent) Init(shortMessage string) {
 	e.Version = VERSION_1_1
 	e.Host = gHost
+	e.ShortMessage = shortMessage
+}
+
+func (e *BaseEvent) InitWithFacility(facility string, shortMessage string) {
+	e.Version = VERSION_1_1
+	e.Host = gHost
+	e.Facility = facility
 	e.ShortMessage = shortMessage
 }
 
