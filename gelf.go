@@ -44,6 +44,12 @@ type BaseEvent struct {
 	FullMessage  string `json:"full_message,omitempty"`
 }
 
+func (e *BaseEvent) Init(shortMessage string) {
+	e.Version = VERSION_1_1
+	e.Host = gHost
+	e.ShortMessage = shortMessage
+}
+
 func (e *BaseEvent) ToJson() ([]byte, error) {
 	return json.Marshal(e)
 }
@@ -128,6 +134,8 @@ func Start(config Config) (err error) {
 	return
 }
 
+/* ----- */
+
 func SendBytes(packet []byte) {
 	if gSendChannel != nil {
 		select {
@@ -177,7 +185,7 @@ func (w *worker) run() {
 		packet := <-w.c
 
 		if w.config.Echo {
-			fmt.Printf("gelf <- %s\n", string(packet))
+			fmt.Printf("gelf <- [%d] %s\n", len(packet), string(packet))
 		}
 
 		var err error
