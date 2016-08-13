@@ -21,14 +21,14 @@ const (
 /* ----- */
 
 type Config struct {
-	Enabled     bool   `json:"enabled"`
-	Net         string `json:"net"`
-	Addr        string `json:"addr"`
-	Workers     int    `json:"workers"`
-	Echo        bool   `json:"echo"`
-	Host        string `json:"host"`
-	Compress    bool   `json:"compress"`
-	MaxChunkLen int    `json:"max_chunk_len"`
+	Enabled      bool   `json:"enabled"`
+	Net          string `json:"net"`
+	Addr         string `json:"addr"`
+	Workers      int    `json:"workers"`
+	Echo         bool   `json:"echo"`
+	Host         string `json:"host"`
+	Compress     bool   `json:"compress"`
+	MaxChunkSize int    `json:"max_chunk_size"`
 }
 
 /* ----- */
@@ -87,10 +87,10 @@ func Start(config Config) (err error) {
 		return fmt.Errorf("Bad worker count %d", config.Workers)
 	}
 
-	if config.MaxChunkLen == 0 {
-		config.MaxChunkLen = 1400
-	} else if config.MaxChunkLen < 100 || config.MaxChunkLen > 8192 {
-		return fmt.Errorf("Bad max chunk size %d", config.MaxChunkLen)
+	if config.MaxChunkSize == 0 {
+		config.MaxChunkSize = 1400
+	} else if config.MaxChunkSize < 100 || config.MaxChunkSize > 8192 {
+		return fmt.Errorf("Bad max chunk size %d", config.MaxChunkSize)
 	}
 
 	raddr, err := net.ResolveUDPAddr(config.Net, config.Addr)
@@ -193,24 +193,26 @@ func (w *worker) run() {
 		}
 
 		total := len(tosend)
-		max := w.config.MaxChunkLen
+		max := w.config.MaxChunkSize
 
 		if total > max {
+			// Need to break into chunks
 			chunkCount := (total + max - 1) / max
 
 			if chunkCount > 128 {
-				reportError(errors.New("chunk has too many chunks"))
+				reportError(errors.New("packet has too many chunks"))
 				continue
 			}
 
 			chunkOffset := 0
+			w.rand.Read(w.id)
+
 			for chunk := 0; chunk < chunkCount; chunk++ {
 				w.cbuf.Reset()
 				// magic header
 				w.cbuf.WriteByte(0x1e)
 				w.cbuf.WriteByte(0x0f)
 				// id
-				w.rand.Read(w.id)
 				w.cbuf.Write(w.id)
 				// chunk number and count
 				w.cbuf.WriteByte(byte(chunk))
@@ -222,12 +224,15 @@ func (w *worker) run() {
 				}
 				sl := tosend[chunkOffset : chunkOffset+chunkLen]
 				w.cbuf.Write(sl)
+				// send
+				w.conn.Write(w.cbuf.Bytes())
 				// next!
 				chunkOffset = chunkOffset + max
 			}
+		} else {
+			// Chunking is not needed
+			w.conn.Write(tosend)
 		}
-
-		w.conn.Write(tosend)
 	}
 }
 
