@@ -112,15 +112,14 @@ func Start(config Config) (err error) {
 		return
 	}
 
-	fmt.Printf("GELF logger start, net = %s, addr = %s\n", config.Net, config.Addr)
-
 	if len(config.Host) == 0 {
 		config.Host, err = os.Hostname()
 		if err != nil {
 			return
 		}
-		fmt.Printf("GELF host = %q\n", config.Host)
 	}
+
+	fmt.Printf("GELF logger start, host = %s, sending to to net = %s, addr = %s\n", config.Host, config.Net, config.Addr)
 
 	gSendChannel = make(chan []byte, 16)
 	gHost = config.Host
