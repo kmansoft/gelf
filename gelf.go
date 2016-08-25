@@ -28,6 +28,7 @@ type Config struct {
 	Host         string `json:"host"`
 	Compress     bool   `json:"compress"`
 	MaxChunkSize int    `json:"max_chunk_size"`
+	BufSize      int    `json:"buf_size"`
 }
 
 /* ----- */
@@ -110,6 +111,13 @@ func Start(config Config) (err error) {
 	conn, err := net.DialUDP(config.Net, nil, raddr)
 	if err != nil {
 		return
+	}
+
+	if config.BufSize > 0 {
+		err = conn.SetWriteBuffer(config.BufSize)
+		if err != nil {
+			return
+		}
 	}
 
 	if len(config.Host) == 0 {
