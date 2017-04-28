@@ -184,7 +184,11 @@ type worker struct {
 
 func newWorker(c chan []byte, conn *net.UDPConn, config Config) (*worker, error) {
 	w := &worker{c: gSendChannel, conn: conn, config: config}
-	w.zwriter = zlib.NewWriter(&w.zbuf)
+	var err error
+	w.zwriter, err = zlib.NewWriterLevel(&w.zbuf, zlib.BestSpeed)
+	if err != nil {
+		return nil, err
+	}
 	w.rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 	w.id = make([]byte, 8, 8)
 	return w, nil
